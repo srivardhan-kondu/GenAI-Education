@@ -3,7 +3,7 @@ import logging
 import re
 from typing import Dict, List
 
-import google.generativeai as genai
+import httpx
 
 from app.config import settings
 
@@ -20,11 +20,49 @@ _STYLE_GUIDE = {
     "detailed": "comprehensive and thorough — each section well-developed",
 }
 
+# OpenAI config
+_OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+_MODEL = "gpt-4o-mini"
+
 
 class TextGenerationService:
     def __init__(self) -> None:
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.api_key = settings.OPENAI_API_KEY
+
+    async def _call_openai(self, prompt: str) -> str:
+        """Call OpenAI Chat Completions API via httpx."""
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY is not configured.")
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": _MODEL,
+            "messages": [
+                {"role": "system", "content": "You are an expert educational content creator. Always return valid JSON only — no markdown fences, no extra commentary."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.7,
+            "max_tokens": 4096,
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                resp = await client.post(_OPENAI_URL, headers=headers, json=payload)
+                data = resp.json()
+
+                if resp.status_code == 200:
+                    text = data["choices"][0]["message"]["content"]
+                    logger.info("✅ OpenAI %s succeeded", _MODEL)
+                    return text.strip()
+
+                err_msg = data.get("error", {}).get("message", str(data))
+                raise ValueError(f"OpenAI API error {resp.status_code}: {err_msg}")
+
+            except httpx.TimeoutException:
+                raise ValueError(f"OpenAI API request timed out after 60s")
 
     async def generate_educational_content(
         self,
@@ -32,11 +70,7 @@ class TextGenerationService:
         difficulty_level: str = "beginner",
         explanation_style: str = "detailed",
     ) -> Dict:
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY is not configured.")
-
-        prompt = f"""You are an expert educational content creator.
-Generate structured learning content about "{topic}" for a {difficulty_level} learner.
+        prompt = f"""Generate structured learning content about "{topic}" for a {difficulty_level} learner.
 
 Guidelines:
 - Language style: {_DIFFICULTY_GUIDE.get(difficulty_level, 'clear')}
@@ -56,8 +90,7 @@ Required JSON structure (all fields mandatory):
 The "concepts" array must contain 2-4 specific, concrete sub-topics of "{topic}" that would benefit from a diagram or illustration.
 """
 
-        response = await self.model.generate_content_async(prompt)
-        raw = response.text.strip()
+        raw = await self._call_openai(prompt)
 
         # Strip any accidental markdown code fences
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
