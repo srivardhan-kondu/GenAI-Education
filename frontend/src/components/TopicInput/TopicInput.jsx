@@ -4,35 +4,37 @@ import toast from 'react-hot-toast'
 import { contentAPI } from '../../services/api'
 
 const DIFFICULTY_OPTIONS = [
-  { value: 'beginner',     label: 'Beginner',     desc: 'Simple language, analogies',   icon: '🌱' },
-  { value: 'intermediate', label: 'Intermediate', desc: 'Some technical depth',          icon: '🌿' },
-  { value: 'advanced',     label: 'Advanced',     desc: 'Full technical precision',      icon: '🌳' },
+  { value: 'beginner', label: 'Beginner', desc: 'Simple language, analogies', icon: '🌱' },
+  { value: 'intermediate', label: 'Intermediate', desc: 'Some technical depth', icon: '🌿' },
+  { value: 'advanced', label: 'Advanced', desc: 'Full technical precision', icon: '🌳' },
 ]
 
 const STYLE_OPTIONS = [
   { value: 'detailed', label: 'Detailed', desc: 'Thorough explanations' },
-  { value: 'short',    label: 'Short',    desc: 'Concise & quick read' },
+  { value: 'short', label: 'Short', desc: 'Concise & quick read' },
 ]
 
 const STEPS = [
-  { label: 'Generating educational text…',      pct: 15 },
-  { label: 'Extracting key concepts…',          pct: 35 },
-  { label: 'Creating visual diagrams…',         pct: 60 },
-  { label: 'Recording voice narration…',        pct: 80 },
-  { label: 'Assembling learning module…',       pct: 95 },
+  { label: 'Generating educational text…', pct: 12 },
+  { label: 'Extracting key concepts…', pct: 28 },
+  { label: 'Creating visual diagrams…', pct: 48 },
+  { label: 'Generating video animations…', pct: 62 },
+  { label: 'Recording voice narration…', pct: 78 },
+  { label: 'Assembling learning module…', pct: 95 },
 ]
 
 export default function TopicInput() {
   const navigate = useNavigate()
 
-  const [topic,          setTopic]          = useState('')
-  const [difficulty,     setDifficulty]     = useState('beginner')
-  const [style,          setStyle]          = useState('detailed')
-  const [genImages,      setGenImages]      = useState(true)
-  const [genAudio,       setGenAudio]       = useState(true)
-  const [loading,        setLoading]        = useState(false)
-  const [stepIdx,        setStepIdx]        = useState(0)
-  const [progress,       setProgress]       = useState(0)
+  const [topic, setTopic] = useState('')
+  const [difficulty, setDifficulty] = useState('beginner')
+  const [style, setStyle] = useState('detailed')
+  const [genImages, setGenImages] = useState(true)
+  const [genAudio, setGenAudio] = useState(true)
+  const [genVideo, setGenVideo] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [stepIdx, setStepIdx] = useState(0)
+  const [progress, setProgress] = useState(0)
 
   // Simulate step-by-step progress while waiting for API
   const startProgressSim = () => {
@@ -60,13 +62,16 @@ export default function TopicInput() {
     startProgressSim()
 
     try {
-      const data = await contentAPI.generate({
-        topic:             topic.trim(),
-        difficulty_level:  difficulty,
-        explanation_style: style,
-        generate_images:   genImages,
-        generate_audio:    genAudio,
-      })
+      const data = await contentAPI.generate(
+        topic.trim(),
+        difficulty,
+        style,
+        {
+          generateImages: genImages,
+          generateAudio: genAudio,
+          generateVideo: genVideo,
+        },
+      )
       setProgress(100)
       toast.success('Learning module ready!')
       navigate(`/module/${data.id}`, { state: { module: data } })
@@ -202,7 +207,8 @@ export default function TopicInput() {
             <div className="space-y-3">
               {[
                 { label: '🖼  AI-Generated Images', hint: 'Visual diagrams per concept', val: genImages, set: setGenImages },
-                { label: '🔊 Voice Narration',       hint: 'Audio summary using ElevenLabs', val: genAudio, set: setGenAudio },
+                { label: '🎬 Video Animations', hint: 'Short concept animations (slower)', val: genVideo, set: setGenVideo },
+                { label: '🔊 Voice Narration', hint: 'Audio summary using ElevenLabs', val: genAudio, set: setGenAudio },
               ].map(({ label, hint, val, set }) => (
                 <label key={label} className="flex items-center justify-between cursor-pointer">
                   <div>

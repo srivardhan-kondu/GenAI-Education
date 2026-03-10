@@ -2,23 +2,25 @@ import React, { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { contentAPI } from '../../services/api'
-import TextContent  from './TextContent'
+import TextContent from './TextContent'
 import ImageContent from './ImageContent'
 import AudioContent from './AudioContent'
+import VideoContent from './VideoContent'
+import NotesPanel from './NotesPanel'
 
 const DIFFICULTY_COLOURS = {
-  beginner:     'bg-green-100 text-green-700',
+  beginner: 'bg-green-100 text-green-700',
   intermediate: 'bg-amber-100 text-amber-700',
-  advanced:     'bg-red-100  text-red-700',
+  advanced: 'bg-red-100  text-red-700',
 }
 
 export default function LearningModule() {
-  const { id }                = useParams()
-  const { state }             = useLocation()
-  const navigate              = useNavigate()
-  const [module, setModule]   = useState(state?.module || null)
+  const { id } = useParams()
+  const { state } = useLocation()
+  const navigate = useNavigate()
+  const [module, setModule] = useState(state?.module || null)
   const [loading, setLoading] = useState(!state?.module)
-  const [activeTab, setTab]   = useState('text')
+  const [activeTab, setTab] = useState('text')
 
   useEffect(() => {
     if (!module) {
@@ -47,9 +49,11 @@ export default function LearningModule() {
   if (!module) return null
 
   const tabs = [
-    { id: 'text',   label: '📖 Content',   always: true },
-    { id: 'images', label: '🖼 Images',    always: false, hidden: !module.images?.some(i => i.base64_data) },
-    { id: 'audio',  label: '🔊 Audio',     always: false, hidden: !module.audio_base64 },
+    { id: 'text', label: '📖 Content', always: true },
+    { id: 'images', label: '🖼 Images', always: false, hidden: !module.images?.some(i => i.base64_data) },
+    { id: 'video', label: '🎬 Video', always: false, hidden: !module.videos?.some(v => v.base64_data) },
+    { id: 'audio', label: '🔊 Audio', always: false, hidden: !module.audio_base64 },
+    { id: 'notes', label: '📝 Notes', always: true },
   ].filter((t) => !t.hidden)
 
   return (
@@ -122,8 +126,14 @@ export default function LearningModule() {
       {activeTab === 'images' && (
         <ImageContent images={module.images} />
       )}
+      {activeTab === 'video' && (
+        <VideoContent videos={module.videos} />
+      )}
       {activeTab === 'audio' && (
         <AudioContent audioBase64={module.audio_base64} />
+      )}
+      {activeTab === 'notes' && (
+        <NotesPanel moduleId={module.id} topic={module.topic} />
       )}
 
       {/* If only one tab, show all sections inline */}
