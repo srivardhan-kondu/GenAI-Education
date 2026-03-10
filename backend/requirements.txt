@@ -13,4 +13,6 @@ aiofiles>=23.2.1
 email-validator>=2.2.0
 fpdf2>=2.7.9
 moviepy>=2.0.0
+imageio[ffmpeg]>=2.34.0
+numpy>=1.26.0
 Pillow>=10.0.0

@@ -2,6 +2,7 @@ import asyncio
 import base64
 import io
 import logging
+import platform
 import tempfile
 from typing import List, Optional
 
@@ -24,6 +25,34 @@ _FPS = 24
 _VIDEO_SIZE = (1280, 720)
 
 
+def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Load a TrueType font cross-platform, falling back to Pillow default."""
+    candidates = []
+    system = platform.system()
+    if system == "Darwin":  # macOS
+        candidates = [
+            "/System/Library/Fonts/Helvetica.ttc",
+            "/System/Library/Fonts/SFNSText.ttf",
+        ]
+    elif system == "Windows":
+        candidates = [
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/segoeui.ttf",
+        ]
+    else:  # Linux
+        candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size)
+        except (OSError, IOError):
+            continue
+    return ImageFont.load_default()
+
+
 class VideoGenerationService:
     """
     Generates animated educational MP4 videos by:
@@ -38,6 +67,7 @@ class VideoGenerationService:
     async def _generate_concept_image(self, concept: str, topic: str) -> Optional[bytes]:
         """Fetch a concept image from FLUX and return raw bytes."""
         if not settings.HUGGINGFACE_API_KEY:
+            logger.warning("HUGGINGFACE_API_KEY not set — skipping video image generation.")
             return None
 
         prompt = (
@@ -47,15 +77,20 @@ class VideoGenerationService:
         )
         payload = {"inputs": prompt, "parameters": {"num_inference_steps": 4}}
 
+        max_retries = 3
         try:
-            async with httpx.AsyncClient(timeout=90.0) as client:
-                resp = await client.post(_HF_IMG_URL, headers=self.headers, json=payload)
-                if resp.status_code == 503:
-                    await asyncio.sleep(20)
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                for attempt in range(max_retries):
                     resp = await client.post(_HF_IMG_URL, headers=self.headers, json=payload)
-                if resp.status_code == 200:
-                    return resp.content
-                logger.error("Image fetch failed [%s]: %s", resp.status_code, resp.text[:200])
+                    if resp.status_code == 200:
+                        return resp.content
+                    if resp.status_code == 503:
+                        wait = 20 * (attempt + 1)
+                        logger.info("HF model loading (attempt %d/%d) — waiting %ds", attempt + 1, max_retries, wait)
+                        await asyncio.sleep(wait)
+                        continue
+                    logger.error("Image fetch failed [%s]: %s", resp.status_code, resp.text[:200])
+                    break
         except Exception:
             logger.exception("Image fetch error for concept '%s'", concept)
         return None
@@ -70,13 +105,8 @@ class VideoGenerationService:
         if len(title) > 40:
             title = title[:37] + "..."
 
-        # Use default font with larger size
-        try:
-            font_large = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 52)
-            font_small = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 28)
-        except (OSError, IOError):
-            font_large = ImageFont.load_default()
-            font_small = ImageFont.load_default()
+        font_large = _get_font(52)
+        font_small = _get_font(28)
 
         # Center title
         bbox = draw.textbbox((0, 0), title, font=font_large)
@@ -119,10 +149,7 @@ class VideoGenerationService:
             [(0, _VIDEO_SIZE[1] - 80), (_VIDEO_SIZE[0], _VIDEO_SIZE[1])],
             fill=(30, 30, 60),
         )
-        try:
-            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 30)
-        except (OSError, IOError):
-            font = ImageFont.load_default()
+        font = _get_font(30)
 
         label = f"Concept: {concept}"
         bbox = draw.textbbox((0, 0), label, font=font)

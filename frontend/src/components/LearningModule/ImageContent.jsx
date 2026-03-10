@@ -6,7 +6,17 @@ export default function ImageContent({ images }) {
   if (!images || images.length === 0) return null
 
   const validImages = images.filter((img) => img.base64_data)
-  if (validImages.length === 0) return null
+  if (validImages.length === 0) {
+    return (
+      <div className="card text-center py-12 text-slate-400">
+        <p className="text-4xl mb-2">🖼</p>
+        <p className="font-medium">Image generation failed.</p>
+        <p className="text-sm mt-1">
+          The AI image service may be temporarily unavailable. Please try generating the module again.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="animate-fade-in">

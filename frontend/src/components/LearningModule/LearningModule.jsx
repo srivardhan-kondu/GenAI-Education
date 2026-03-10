@@ -50,8 +50,8 @@ export default function LearningModule() {
 
   const tabs = [
     { id: 'text', label: '📖 Content', always: true },
-    { id: 'images', label: '🖼 Images', always: false, hidden: !module.images?.some(i => i.base64_data) },
-    { id: 'video', label: '🎬 Video', always: false, hidden: !module.videos?.some(v => v.base64_data) },
+    { id: 'images', label: '🖼 Images', always: false, hidden: !module.images || module.images.length === 0 },
+    { id: 'video', label: '🎬 Video', always: false, hidden: !module.videos || module.videos.length === 0 },
     { id: 'audio', label: '🔊 Audio', always: false, hidden: !module.audio_base64 },
     { id: 'notes', label: '📝 Notes', always: true },
   ].filter((t) => !t.hidden)

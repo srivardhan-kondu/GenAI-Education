@@ -37,28 +37,35 @@ class ImageGenerationService:
             "parameters": {"num_inference_steps": 25, "guidance_scale": 7.5},
         }
 
+        max_retries = 3
         try:
-            async with httpx.AsyncClient(timeout=90.0) as client:
-                response = await client.post(
-                    _HF_API_URL, headers=self.headers, json=payload
-                )
-
-                # Model can still be loading (503) — wait and retry once
-                if response.status_code == 503:
-                    logger.info("HuggingFace model loading — waiting 20 s and retrying.")
-                    await asyncio.sleep(20)
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                for attempt in range(max_retries):
                     response = await client.post(
                         _HF_API_URL, headers=self.headers, json=payload
                     )
 
-                if response.status_code == 200:
-                    return base64.b64encode(response.content).decode("utf-8")
+                    if response.status_code == 200:
+                        return base64.b64encode(response.content).decode("utf-8")
 
-                logger.error(
-                    "Image generation failed [%s]: %s",
-                    response.status_code,
-                    response.text[:200],
-                )
+                    # Model can still be loading (503) — wait and retry
+                    if response.status_code == 503:
+                        wait = 20 * (attempt + 1)
+                        logger.info(
+                            "HuggingFace model loading (attempt %d/%d) — waiting %ds.",
+                            attempt + 1, max_retries, wait,
+                        )
+                        await asyncio.sleep(wait)
+                        continue
+
+                    logger.error(
+                        "Image generation failed [%s]: %s",
+                        response.status_code,
+                        response.text[:200],
+                    )
+                    return None
+
+                logger.error("Image generation failed after %d retries (503).", max_retries)
                 return None
 
         except Exception:
