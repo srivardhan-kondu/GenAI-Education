@@ -44,6 +44,7 @@ async def generate_content(
         "summary": module.summary,
         "concepts": module.concepts,
         "images": [img.model_dump() for img in module.images],
+        "videos": [vid.model_dump() for vid in module.videos],
         "audio_base64": module.audio_base64,
         "created_at": module.created_at.isoformat(),
     }

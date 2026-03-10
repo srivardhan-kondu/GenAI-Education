@@ -6,9 +6,10 @@ from typing import List, Optional
 from bson import ObjectId
 
 from app.database.connection import get_database
-from app.models.content import ContentRequest, ImageData, LearningModule
+from app.models.content import ContentRequest, ImageData, LearningModule, VideoData
 from app.services.image_generation import image_generation_service
 from app.services.text_generation import text_generation_service
+from app.services.video_generation import video_generation_service
 from app.services.voice_generation import voice_generation_service
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 class ContentIntegrationService:
     """
     Orchestrates the full content-generation pipeline:
-      1. Text via Gemini
+      1. Text via OpenAI GPT
       2. Images (HuggingFace SD) + Audio (ElevenLabs) — concurrently
       3. Assembly into a LearningModule
       4. Persistence to MongoDB
@@ -41,6 +42,7 @@ class ContentIntegrationService:
         # ── Step 2: Generate images + audio concurrently ──────────────────────
         image_task = None
         audio_task = None
+        video_task = None
 
         if request.generate_images and concepts:
             image_task = image_generation_service.generate_images_for_concepts(
@@ -53,15 +55,20 @@ class ContentIntegrationService:
                 key_points=text_content.get("key_points", []),
                 summary=text_content.get("summary", ""),
             )
+        if request.generate_video and concepts:
+            video_task = video_generation_service.generate_videos_for_concepts(
+                concepts, request.topic
+            )
 
         # Run whatever tasks exist in parallel
-        coroutines = [t for t in (image_task, audio_task) if t is not None]
+        coroutines = [t for t in (image_task, audio_task, video_task) if t is not None]
         raw_results = await asyncio.gather(*coroutines, return_exceptions=True)
 
         # Map results back
         result_iter = iter(raw_results)
         images_raw = next(result_iter) if image_task else []
         audio_b64 = next(result_iter) if audio_task else None
+        videos_raw = next(result_iter) if video_task else []
 
         if isinstance(images_raw, Exception):
             logger.error("Image generation failed: %s", images_raw)
@@ -69,6 +76,9 @@ class ContentIntegrationService:
         if isinstance(audio_b64, Exception):
             logger.error("Audio generation failed: %s", audio_b64)
             audio_b64 = None
+        if isinstance(videos_raw, Exception):
+            logger.error("Video generation failed: %s", videos_raw)
+            videos_raw = []
 
         # ── Step 3: Assemble module ───────────────────────────────────────────
         images = [
@@ -77,6 +87,14 @@ class ContentIntegrationService:
                 base64_data=img.get("base64_data"),
             )
             for img in (images_raw or [])
+        ]
+
+        videos = [
+            VideoData(
+                concept=vid.get("concept", ""),
+                base64_data=vid.get("base64_data"),
+            )
+            for vid in (videos_raw or [])
         ]
 
         module = LearningModule(
@@ -90,6 +108,7 @@ class ContentIntegrationService:
             summary=text_content.get("summary", ""),
             concepts=concepts,
             images=images,
+            videos=videos,
             audio_base64=audio_b64,
             created_at=datetime.utcnow(),
         )
@@ -103,6 +122,7 @@ class ContentIntegrationService:
         db = get_database()
         doc = module.model_dump(exclude={"id"})
         doc["images"] = [img.model_dump() for img in module.images]
+        doc["videos"] = [vid.model_dump() for vid in module.videos]
         result = await db.learning_modules.insert_one(doc)
         module.id = str(result.inserted_id)
         return module

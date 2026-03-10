@@ -9,11 +9,17 @@ class ContentRequest(BaseModel):
     explanation_style: str = Field(default="detailed")
     generate_images: bool = True
     generate_audio: bool = True
+    generate_video: bool = False  # opt-in (slower)
 
 
 class ImageData(BaseModel):
     concept: str
     base64_data: Optional[str] = None  # base64-encoded PNG/JPEG
+
+
+class VideoData(BaseModel):
+    concept: str
+    base64_data: Optional[str] = None  # base64-encoded MP4
 
 
 class LearningModule(BaseModel):
@@ -35,6 +41,7 @@ class LearningModule(BaseModel):
 
     # Media
     images: List[ImageData] = []
+    videos: List[VideoData] = []
     audio_base64: Optional[str] = None   # base64-encoded MP3
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
