@@ -46,19 +46,28 @@ An AI-powered platform that automatically generates **multimodal learning materi
 ### Backend — AI Services
 - [x] `services/text_generation.py` — Gemini API integration, JSON content parsing
 - [x] `services/image_generation.py` — HuggingFace Stable Diffusion, base64 output
+- [x] `services/video_generation.py` — HuggingFace text-to-video (ali-vilab/text-to-video-ms-1.7b), base64 MP4
 - [x] `services/voice_generation.py` — ElevenLabs TTS, base64 audio output
-- [x] `services/content_integration.py` — Full pipeline orchestration (text → images + voice → assemble → save)
+- [x] `services/notes_generation.py` — Structured / Cornell / Flashcard notes (Gemini-powered)
+- [x] `services/pdf_export.py` — PDF study notes export using fpdf2
+- [x] `services/content_integration.py` — Full pipeline orchestration (text → images + video + voice → assemble → save)
+
+### Backend — API Routes
+- [x] `routes/auth.py` — POST /auth/register, POST /auth/login, GET /auth/me, PUT /auth/profile
+- [x] `routes/content.py` — POST /content/generate, GET /content/history, GET /content/{id}
+- [x] `routes/notes.py` — GET /notes/{id}, GET /notes/{id}/pdf (structured, cornell, flashcards)
+- [x] `routes/search.py` — GET /search/?q={query}
 
 ### Frontend — React
 - [x] Vite project setup (`vite.config.js`, `package.json`, Tailwind config)
 - [x] Global styles with Tailwind CSS directives
-- [x] `AuthContext.jsx` — Auth state management (login/register/logout)
-- [x] `services/api.js` — Axios client, auth interceptors, typed API functions
-- [x] `App.jsx` — React Router v6 routes
-- [x] `ProtectedRoute.jsx` — Auth guard component
+- [x] `context/AuthContext.jsx` — Auth state management (login/register/logout) with useReducer + localStorage
+- [x] `services/api.js` — Axios client, JWT auth interceptors, typed API functions (authAPI, contentAPI, searchAPI)
+- [x] `App.jsx` — React Router v6 routes with AuthProvider and Toaster
+- [x] `components/ProtectedRoute.jsx` — Auth guard component with loading spinner
 
 ### Frontend — Components
-- [x] `Navbar.jsx` — Navigation with user info and logout
+- [x] `Navbar/Navbar.jsx` — Responsive sticky nav with glassmorphism, mobile hamburger, user avatar, logout
 - [x] `Auth/Login.jsx` — Login form with validation
 - [x] `Auth/Register.jsx` — Registration form with validation
 - [x] `Dashboard/Dashboard.jsx` — Welcome page, stats, recent modules
@@ -69,25 +78,26 @@ An AI-powered platform that automatically generates **multimodal learning materi
 - [x] `LearningModule/AudioContent.jsx` — HTML5 audio player for narration
 - [x] `History/History.jsx` — Paginated list of past learning modules
 - [x] `Search/Search.jsx` — Topic/keyword search with results
+- [x] `Profile/Profile.jsx` — User profile editing with learning preferences (FR-3 UI)
 
 ---
 
 ## 🔄 In Progress
-_Nothing currently in progress — all core features implemented._
+_Nothing currently in progress — all core features + frontend infrastructure implemented._
 
 ---
 
 ## 📋 Pending / Future Tasks
 
 ### Near-Term Features
-- [ ] User profile editing page (UI)
+- [x] User profile editing page (UI) — ✅ Completed
 - [ ] Learning module PDF export
 - [ ] Real-time generation progress (WebSocket or SSE)
 - [ ] Module delete / archiving
 - [ ] Toast notification improvements
 
 ### AI Enhancements
-- [ ] Video generation module (AI video APIs)
+- [ ] Video generation module (AI video APIs) — ✅ Completed (FR-9)
 - [ ] Quiz auto-generation from module content
 - [ ] Multiple voice/language support in ElevenLabs
 - [ ] OpenAI GPT-4 as fallback for Gemini failures
@@ -152,6 +162,8 @@ User reads / views images / listens to narration
 | POST | `/content/generate` | Generate learning module | Yes |
 | GET | `/content/history` | All user modules | Yes |
 | GET | `/content/{id}` | Get specific module | Yes |
+| GET | `/notes/{id}` | Generate study notes | Yes |
+| GET | `/notes/{id}/pdf` | Download notes as PDF | Yes |
 | GET | `/search/?q={query}` | Search modules | Yes |
 | GET | `/health` | Health check | No |
 
@@ -169,7 +181,7 @@ User reads / views images / listens to narration
 | FR-6 | Generate Educational Text | ✅ Implemented |
 | FR-7 | Concept Extraction | ✅ Implemented |
 | FR-8 | Educational Image Creation | ✅ Implemented |
-| FR-9 | Educational Video Generation | ⏳ Future task |
+| FR-9 | Educational Video Generation | ✅ Implemented |
 | FR-10 | Text to Speech | ✅ Implemented |
 | FR-11 | Learning Module Creation | ✅ Implemented |
 | FR-12 | Content Presentation UI | ✅ Implemented |
@@ -222,4 +234,4 @@ npm run dev
 
 ---
 
-_Last updated: March 2026 — All core features complete and ready for API key integration._
+_Last updated: March 2026 — All 15 FRs implemented. Notes generation (structured + Cornell + flashcards + PDF export) added._
