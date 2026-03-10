@@ -15,9 +15,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_HF_IMG_URL = (
-    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
-)
+_OPENAI_IMG_URL = "https://api.openai.com/v1/images/generations"
 
 # Video settings
 _CLIP_DURATION = 5       # seconds per concept slide
@@ -56,18 +54,18 @@ def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 class VideoGenerationService:
     """
     Generates animated educational MP4 videos by:
-      1. Creating concept images via FLUX.1-schnell (free)
+      1. Creating concept images via OpenAI DALL-E
       2. Building an MP4 slideshow with zoom/pan effects and text overlays
-         using moviepy (free, local)
+         using moviepy (local)
     """
 
     def __init__(self) -> None:
-        self.headers = {"Authorization": f"Bearer {settings.HUGGINGFACE_API_KEY}"}
+        self.api_key = settings.OPENAI_API_KEY
 
     async def _generate_concept_image(self, concept: str, topic: str) -> Optional[bytes]:
-        """Fetch a concept image from FLUX and return raw bytes."""
-        if not settings.HUGGINGFACE_API_KEY:
-            logger.warning("HUGGINGFACE_API_KEY not set — skipping video image generation.")
+        """Fetch a concept image from OpenAI DALL-E and return raw bytes."""
+        if not self.api_key:
+            logger.warning("OPENAI_API_KEY not set — skipping video image generation.")
             return None
 
         prompt = (
@@ -75,22 +73,26 @@ class VideoGenerationService:
             "Clean infographic, labeled sections, arrows, white background, "
             "professional educational style, suitable for students, high quality."
         )
-        payload = {"inputs": prompt, "parameters": {"num_inference_steps": 4}}
 
-        max_retries = 3
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": "dall-e-3",
+            "prompt": prompt,
+            "n": 1,
+            "size": "1024x1024",
+            "response_format": "b64_json",
+        }
+
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
-                for attempt in range(max_retries):
-                    resp = await client.post(_HF_IMG_URL, headers=self.headers, json=payload)
-                    if resp.status_code == 200:
-                        return resp.content
-                    if resp.status_code == 503:
-                        wait = 20 * (attempt + 1)
-                        logger.info("HF model loading (attempt %d/%d) — waiting %ds", attempt + 1, max_retries, wait)
-                        await asyncio.sleep(wait)
-                        continue
-                    logger.error("Image fetch failed [%s]: %s", resp.status_code, resp.text[:200])
-                    break
+                resp = await client.post(_OPENAI_IMG_URL, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return base64.b64decode(data["data"][0]["b64_json"])
+                logger.error("Image fetch failed [%s]: %s", resp.status_code, resp.text[:300])
         except Exception:
             logger.exception("Image fetch error for concept '%s'", concept)
         return None

@@ -9,22 +9,20 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_HF_API_URL = (
-    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
-)
+_OPENAI_IMG_URL = "https://api.openai.com/v1/images/generations"
 
 
 class ImageGenerationService:
     def __init__(self) -> None:
-        self.headers = {"Authorization": f"Bearer {settings.HUGGINGFACE_API_KEY}"}
+        self.api_key = settings.OPENAI_API_KEY
 
     async def generate_image(self, concept: str, topic: str) -> Optional[str]:
         """
-        Call Hugging Face Inference API to generate an educational illustration.
+        Call OpenAI DALL-E to generate an educational illustration.
         Returns the image as a base64-encoded string, or None on failure.
         """
-        if not settings.HUGGINGFACE_API_KEY:
-            logger.warning("HUGGINGFACE_API_KEY not set — skipping image generation.")
+        if not self.api_key:
+            logger.warning("OPENAI_API_KEY not set — skipping image generation.")
             return None
 
         prompt = (
@@ -32,40 +30,34 @@ class ImageGenerationService:
             "Clean infographic style, white background, clearly labelled, "
             "suitable for students, high quality."
         )
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
         payload = {
-            "inputs": prompt,
-            "parameters": {"num_inference_steps": 25, "guidance_scale": 7.5},
+            "model": "dall-e-3",
+            "prompt": prompt,
+            "n": 1,
+            "size": "1024x1024",
+            "response_format": "b64_json",
         }
 
-        max_retries = 3
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
-                for attempt in range(max_retries):
-                    response = await client.post(
-                        _HF_API_URL, headers=self.headers, json=payload
-                    )
+                response = await client.post(
+                    _OPENAI_IMG_URL, headers=headers, json=payload
+                )
 
-                    if response.status_code == 200:
-                        return base64.b64encode(response.content).decode("utf-8")
+                if response.status_code == 200:
+                    data = response.json()
+                    return data["data"][0]["b64_json"]
 
-                    # Model can still be loading (503) — wait and retry
-                    if response.status_code == 503:
-                        wait = 20 * (attempt + 1)
-                        logger.info(
-                            "HuggingFace model loading (attempt %d/%d) — waiting %ds.",
-                            attempt + 1, max_retries, wait,
-                        )
-                        await asyncio.sleep(wait)
-                        continue
-
-                    logger.error(
-                        "Image generation failed [%s]: %s",
-                        response.status_code,
-                        response.text[:200],
-                    )
-                    return None
-
-                logger.error("Image generation failed after %d retries (503).", max_retries)
+                logger.error(
+                    "Image generation failed [%s]: %s",
+                    response.status_code,
+                    response.text[:300],
+                )
                 return None
 
         except Exception:
@@ -75,16 +67,12 @@ class ImageGenerationService:
     async def generate_images_for_concepts(
         self, concepts: List[str], topic: str
     ) -> List[dict]:
-        """Generate images for up to 3 concepts concurrently."""
+        """Generate images for up to 3 concepts (sequentially — DALL-E rate limits)."""
         subset = concepts[:3]
-        tasks = [self.generate_image(c, topic) for c in subset]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
         images = []
-        for concept, result in zip(subset, results):
-            b64 = result if isinstance(result, str) else None
+        for concept in subset:
+            b64 = await self.generate_image(concept, topic)
             images.append({"concept": concept, "base64_data": b64})
-
         return images
 
 
