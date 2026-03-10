@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # AI APIs
     GEMINI_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
     HUGGINGFACE_API_KEY: str = ""
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"  # Rachel (default)
