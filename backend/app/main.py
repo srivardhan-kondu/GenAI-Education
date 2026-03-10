@@ -1,9 +1,12 @@
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="google")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database.connection import connect_to_mongo, close_mongo_connection
-from app.routes import auth, content, search
+from app.routes import auth, content, notes, search
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -32,6 +35,7 @@ app.add_event_handler("shutdown", close_mongo_connection)
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth.router)
 app.include_router(content.router)
+app.include_router(notes.router)
 app.include_router(search.router)
 
 
