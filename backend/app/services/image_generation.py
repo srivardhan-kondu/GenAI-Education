@@ -10,7 +10,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _HF_API_URL = (
-    "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
+    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
 )
 
 
