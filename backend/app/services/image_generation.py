@@ -1,15 +1,18 @@
 import asyncio
 import base64
+import io
 import logging
 from typing import List, Optional
 
 import httpx
+from PIL import Image
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 _OPENAI_IMG_URL = "https://api.openai.com/v1/images/generations"
+_MAX_IMAGE_SIZE = 512  # resize to this max dimension to keep MongoDB docs small
 
 
 class ImageGenerationService:
@@ -51,7 +54,8 @@ class ImageGenerationService:
 
                 if response.status_code == 200:
                     data = response.json()
-                    return data["data"][0]["b64_json"]
+                    raw_b64 = data["data"][0]["b64_json"]
+                    return self._compress_image(raw_b64)
 
                 logger.error(
                     "Image generation failed [%s]: %s",
@@ -63,6 +67,16 @@ class ImageGenerationService:
         except Exception:
             logger.exception("Image generation error for concept '%s'", concept)
             return None
+
+    @staticmethod
+    def _compress_image(b64_data: str) -> str:
+        """Resize and compress a base64 image to JPEG to fit within MongoDB limits."""
+        raw = base64.b64decode(b64_data)
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        img.thumbnail((_MAX_IMAGE_SIZE, _MAX_IMAGE_SIZE), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=80, optimize=True)
+        return base64.b64encode(buf.getvalue()).decode("utf-8")
 
     async def generate_images_for_concepts(
         self, concepts: List[str], topic: str

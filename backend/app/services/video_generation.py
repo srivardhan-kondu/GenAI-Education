@@ -20,7 +20,7 @@ _OPENAI_IMG_URL = "https://api.openai.com/v1/images/generations"
 # Video settings
 _CLIP_DURATION = 5       # seconds per concept slide
 _FPS = 24
-_VIDEO_SIZE = (1280, 720)
+_VIDEO_SIZE = (640, 360)  # smaller resolution to keep MongoDB doc under 16 MB
 
 
 def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -209,6 +209,7 @@ class VideoGenerationService:
                     audio=False,
                     logger=None,
                     preset="ultrafast",
+                    ffmpeg_params=["-crf", "32"],
                 )
                 final.close()
                 tmp.seek(0)
