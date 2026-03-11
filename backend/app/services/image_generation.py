@@ -57,6 +57,23 @@ class ImageGenerationService:
                     raw_b64 = data["data"][0]["b64_json"]
                     return self._compress_image(raw_b64)
 
+                # If DALL-E 3 fails (e.g. billing/access issue), fall back to DALL-E 2
+                logger.warning(
+                    "DALL-E 3 failed [%s], trying DALL-E 2 fallback...",
+                    response.status_code,
+                )
+                payload["model"] = "dall-e-2"
+                payload["size"] = "512x512"
+
+                response = await client.post(
+                    _OPENAI_IMG_URL, headers=headers, json=payload
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    raw_b64 = data["data"][0]["b64_json"]
+                    return self._compress_image(raw_b64)
+
                 logger.error(
                     "Image generation failed [%s]: %s",
                     response.status_code,

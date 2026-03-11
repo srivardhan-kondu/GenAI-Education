@@ -92,6 +92,16 @@ class VideoGenerationService:
                 if resp.status_code == 200:
                     data = resp.json()
                     return base64.b64decode(data["data"][0]["b64_json"])
+
+                # Fall back to DALL-E 2 if DALL-E 3 fails
+                logger.warning("DALL-E 3 failed [%s] for video, trying DALL-E 2...", resp.status_code)
+                payload["model"] = "dall-e-2"
+                payload["size"] = "512x512"
+                resp = await client.post(_OPENAI_IMG_URL, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return base64.b64decode(data["data"][0]["b64_json"])
+
                 logger.error("Image fetch failed [%s]: %s", resp.status_code, resp.text[:300])
         except Exception:
             logger.exception("Image fetch error for concept '%s'", concept)
