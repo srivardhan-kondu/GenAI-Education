@@ -71,13 +71,13 @@ class ContentIntegrationService:
         videos_raw = next(result_iter) if video_task else []
 
         if isinstance(images_raw, Exception):
-            logger.error("Image generation failed: %s", images_raw)
+            logger.error("Image generation failed: %s", images_raw, exc_info=images_raw)
             images_raw = []
         if isinstance(audio_b64, Exception):
-            logger.error("Audio generation failed: %s", audio_b64)
+            logger.error("Audio generation failed: %s", audio_b64, exc_info=audio_b64)
             audio_b64 = None
         if isinstance(videos_raw, Exception):
-            logger.error("Video generation failed: %s", videos_raw)
+            logger.error("Video generation failed: %s", videos_raw, exc_info=videos_raw)
             videos_raw = []
 
         # ── Step 3: Assemble module ───────────────────────────────────────────
