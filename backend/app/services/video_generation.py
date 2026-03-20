@@ -6,16 +6,12 @@ import platform
 import tempfile
 from typing import List, Optional
 
-import httpx
+import os
 import numpy as np
 from moviepy import ImageClip, CompositeVideoClip, TextClip, concatenate_videoclips
 from PIL import Image, ImageDraw, ImageFont
 
-from app.config import settings
-
 logger = logging.getLogger(__name__)
-
-_OPENAI_IMG_URL = "https://api.openai.com/v1/images/generations"
 
 # Video settings
 _CLIP_DURATION = 5       # seconds per concept slide
@@ -53,59 +49,10 @@ def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 
 class VideoGenerationService:
     """
-    Generates animated educational MP4 videos by:
-      1. Creating concept images via OpenAI DALL-E
-      2. Building an MP4 slideshow with zoom/pan effects and text overlays
-         using moviepy (local)
+    Generates animated educational MP4 videos by building a slideshow
+    from pre-generated images with zoom/pan effects and text overlays
+    using moviepy.
     """
-
-    def __init__(self) -> None:
-        self.api_key = settings.OPENAI_API_KEY
-
-    async def _generate_concept_image(self, concept: str, topic: str) -> Optional[bytes]:
-        """Fetch a concept image from OpenAI DALL-E and return raw bytes."""
-        if not self.api_key:
-            logger.warning("OPENAI_API_KEY not set — skipping video image generation.")
-            return None
-
-        prompt = (
-            f"Educational diagram illustrating '{concept}' as part of {topic}. "
-            "Clean infographic, labeled sections, arrows, white background, "
-            "professional educational style, suitable for students, high quality."
-        )
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": "dall-e-3",
-            "prompt": prompt,
-            "n": 1,
-            "size": "1024x1024",
-            "response_format": "b64_json",
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(_OPENAI_IMG_URL, headers=headers, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return base64.b64decode(data["data"][0]["b64_json"])
-
-                # Fall back to DALL-E 2 if DALL-E 3 fails
-                logger.warning("DALL-E 3 failed [%s] for video, trying DALL-E 2...", resp.status_code)
-                payload["model"] = "dall-e-2"
-                payload["size"] = "512x512"
-                resp = await client.post(_OPENAI_IMG_URL, headers=headers, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return base64.b64decode(data["data"][0]["b64_json"])
-
-                logger.error("Image fetch failed [%s]: %s", resp.status_code, resp.text[:300])
-        except Exception:
-            logger.exception("Image fetch error for concept '%s'", concept)
-        return None
 
     def _create_title_frame(self, topic: str) -> np.ndarray:
         """Create a title/intro frame as a numpy array."""
@@ -210,60 +157,63 @@ class VideoGenerationService:
         final = concatenate_videoclips(clips, method="compose")
 
         # Write to temp file and read back as base64
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        tmp_path = tmp.name
+        tmp.close()
         try:
-            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=True) as tmp:
-                final.write_videofile(
-                    tmp.name,
-                    fps=_FPS,
-                    codec="libx264",
-                    audio=False,
-                    logger=None,
-                    preset="ultrafast",
-                    ffmpeg_params=["-crf", "32"],
-                )
-                final.close()
-                tmp.seek(0)
-                return base64.b64encode(tmp.read()).decode("utf-8")
+            final.write_videofile(
+                tmp_path,
+                fps=_FPS,
+                codec="libx264",
+                audio=False,
+                logger=None,
+                preset="ultrafast",
+                ffmpeg_params=["-crf", "32"],
+            )
+            final.close()
+            with open(tmp_path, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
         except Exception:
             logger.exception("Video encoding failed")
             final.close()
             return None
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
-    async def generate_video(self, concept: str, topic: str) -> Optional[str]:
-        """Generate a single-concept animated video. Returns base64 MP4."""
-        img_bytes = await self._generate_concept_image(concept, topic)
+    async def generate_video(self, concept: str, topic: str, image_b64: Optional[str] = None) -> Optional[str]:
+        """Generate a single-concept animated video from a pre-generated image. Returns base64 MP4."""
+        img_bytes = base64.b64decode(image_b64) if image_b64 else None
         frame = self._create_concept_frame(concept, img_bytes)
 
-        # Build video in a thread to avoid blocking the event loop
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None, self._build_video, topic, [(concept, frame)]
         )
 
     async def generate_videos_for_concepts(
-        self, concepts: List[str], topic: str
+        self, concepts: List[str], topic: str, images: List[dict] = None
     ) -> List[dict]:
-        """Generate one combined animated video from up to 3 concepts."""
+        """Generate one combined animated slideshow video from pre-generated images."""
         subset = concepts[:3]
+        image_map = {
+            img["concept"]: img.get("base64_data")
+            for img in (images or [])
+            if img.get("base64_data")
+        }
 
-        # Fetch all concept images concurrently
-        img_tasks = [self._generate_concept_image(c, topic) for c in subset]
-        img_results = await asyncio.gather(*img_tasks, return_exceptions=True)
-
-        # Build frames
         concept_frames = []
-        for concept, img_result in zip(subset, img_results):
-            img_bytes = img_result if isinstance(img_result, bytes) else None
+        for concept in subset:
+            b64_data = image_map.get(concept)
+            img_bytes = base64.b64decode(b64_data) if b64_data else None
             frame = self._create_concept_frame(concept, img_bytes)
             concept_frames.append((concept, frame))
 
-        # Build one combined video in a thread
         loop = asyncio.get_event_loop()
         b64 = await loop.run_in_executor(
             None, self._build_video, topic, concept_frames
         )
 
-        # Return as a single video entry with the topic as concept
         return [{"concept": f"{topic} — Overview", "base64_data": b64}]
 
 

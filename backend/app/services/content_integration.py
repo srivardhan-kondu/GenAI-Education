@@ -39,15 +39,21 @@ class ContentIntegrationService:
         )
         concepts = text_generation_service.extract_concepts(text_content)
 
-        # ── Step 2: Generate images + audio concurrently ──────────────────────
-        image_task = None
+        # ── Step 2: Generate images first (video reuses them as slides) ───────
+        images_raw = []
+        if request.generate_images and concepts:
+            try:
+                images_raw = await image_generation_service.generate_images_for_concepts(
+                    concepts, request.topic
+                )
+            except Exception as e:
+                logger.error("Image generation failed: %s", e, exc_info=e)
+                images_raw = []
+
+        # ── Step 3: Generate audio + video concurrently ───────────────────────
         audio_task = None
         video_task = None
 
-        if request.generate_images and concepts:
-            image_task = image_generation_service.generate_images_for_concepts(
-                concepts, request.topic
-            )
         if request.generate_audio:
             audio_task = voice_generation_service.generate_audio(
                 topic=request.topic,
@@ -57,22 +63,16 @@ class ContentIntegrationService:
             )
         if request.generate_video and concepts:
             video_task = video_generation_service.generate_videos_for_concepts(
-                concepts, request.topic
+                concepts, request.topic, images_raw
             )
 
-        # Run whatever tasks exist in parallel
-        coroutines = [t for t in (image_task, audio_task, video_task) if t is not None]
+        coroutines = [t for t in (audio_task, video_task) if t is not None]
         raw_results = await asyncio.gather(*coroutines, return_exceptions=True)
 
-        # Map results back
         result_iter = iter(raw_results)
-        images_raw = next(result_iter) if image_task else []
         audio_b64 = next(result_iter) if audio_task else None
         videos_raw = next(result_iter) if video_task else []
 
-        if isinstance(images_raw, Exception):
-            logger.error("Image generation failed: %s", images_raw, exc_info=images_raw)
-            images_raw = []
         if isinstance(audio_b64, Exception):
             logger.error("Audio generation failed: %s", audio_b64, exc_info=audio_b64)
             audio_b64 = None
@@ -80,7 +80,7 @@ class ContentIntegrationService:
             logger.error("Video generation failed: %s", videos_raw, exc_info=videos_raw)
             videos_raw = []
 
-        # ── Step 3: Assemble module ───────────────────────────────────────────
+        # ── Step 4: Assemble module ───────────────────────────────────────────
         images = [
             ImageData(
                 concept=img.get("concept", ""),
@@ -113,7 +113,7 @@ class ContentIntegrationService:
             created_at=datetime.utcnow(),
         )
 
-        # ── Step 4: Persist to MongoDB ────────────────────────────────────────
+        # ── Step 5: Persist to MongoDB ────────────────────────────────────────
         return await self._save_module(module)
 
     # ── Persistence helpers ───────────────────────────────────────────────────
